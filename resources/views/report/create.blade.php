@@ -33,22 +33,6 @@
             <form action="{{ route('report.store') }}" method="POST" enctype="multipart/form-data" id="reportForm">
                 @csrf
 
-                {{-- Identitas --}}
-                <h6 class="text-muted fw-semibold mb-3 border-bottom pb-1">Identitas Pelapor</h6>
-                <div class="row g-3 mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label fw-semibold">Nama <span class="text-danger">*</span></label>
-                        <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                               value="{{ old('name') }}" placeholder="Nama lengkap" required>
-                        @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label fw-semibold">No. HP</label>
-                        <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror"
-                               value="{{ old('phone') }}" placeholder="08xx-xxxx-xxxx">
-                        @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                </div>
 
                 {{-- Lokasi --}}
                 <h6 class="text-muted fw-semibold mb-3 border-bottom pb-1">Lokasi Kerusakan</h6>
@@ -145,11 +129,34 @@ function setLocation(lat, lng) {
 
 map.on('click', e => setLocation(e.latlng.lat, e.latlng.lng));
 
-document.getElementById('btnGps').addEventListener('click', () => {
-    if (!navigator.geolocation) return alert('Geolocation tidak didukung browser ini.');
+document.getElementById('btnGps').addEventListener('click', function() {
+    if (!navigator.geolocation) {
+        alert('Geolocation tidak didukung browser ini.');
+        return;
+    }
+
+    const btn = this;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Mencari lokasi...';
+
     navigator.geolocation.getCurrentPosition(
-        pos => setLocation(pos.coords.latitude, pos.coords.longitude),
-        ()  => alert('Gagal mendapatkan lokasi. Izinkan akses lokasi di browser Anda.')
+        pos => {
+            setLocation(pos.coords.latitude, pos.coords.longitude);
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        },
+        err => {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            const messages = {
+                1: 'Akses lokasi ditolak. Izinkan akses di pengaturan browser Anda.',
+                2: 'Lokasi tidak dapat ditentukan. Coba lagi atau gunakan peta.',
+                3: 'Timeout. Coba lagi atau gunakan peta.'
+            };
+            alert(messages[err.code] || 'Gagal mendapatkan lokasi.');
+        },
+        { timeout: 10000, enableHighAccuracy: false }
     );
 });
 

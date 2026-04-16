@@ -19,7 +19,7 @@ class ReportController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:100',
+            'name'        => 'nullable|string|max:100',
             'phone'       => 'nullable|string|max:20',
             'description' => 'required|string|max:2000',
             'address'     => 'nullable|string|max:255',
@@ -37,7 +37,7 @@ class ReportController extends Controller
 
         // Save report
         $report = Report::create([
-            'name'           => $validated['name'],
+            'name'           => $validated['name'] ?? 'Anonim',
             'phone'          => $validated['phone'] ?? null,
             'description'    => $validated['description'],
             'address'        => $validated['address'] ?? null,
