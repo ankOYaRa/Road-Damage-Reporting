@@ -130,7 +130,10 @@ function setLocation(lat, lng) {
 map.on('click', e => setLocation(e.latlng.lat, e.latlng.lng));
 
 document.getElementById('btnGps').addEventListener('click', function() {
+    console.log('🔍 Tombol GPS diklik');
+
     if (!navigator.geolocation) {
+        console.error('❌ Geolocation tidak didukung');
         alert('Geolocation tidak didukung browser ini.');
         return;
     }
@@ -140,23 +143,27 @@ document.getElementById('btnGps').addEventListener('click', function() {
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Mencari lokasi...';
 
+    console.log('📍 Memulai getCurrentPosition...');
+
     navigator.geolocation.getCurrentPosition(
         pos => {
+            console.log('✅ Lokasi ditemukan:', pos.coords.latitude, pos.coords.longitude);
             setLocation(pos.coords.latitude, pos.coords.longitude);
             btn.disabled = false;
             btn.innerHTML = originalHTML;
         },
         err => {
+            console.error('❌ Geolocation error:', err.code, err.message);
             btn.disabled = false;
             btn.innerHTML = originalHTML;
             const messages = {
                 1: 'Akses lokasi ditolak. Izinkan akses di pengaturan browser Anda.',
                 2: 'Lokasi tidak dapat ditentukan. Coba lagi atau gunakan peta.',
-                3: 'Timeout. Coba lagi atau gunakan peta.'
+                3: 'Timeout. Geolocation memerlukan waktu lebih lama. Coba gunakan peta atau ulangi.'
             };
-            alert(messages[err.code] || 'Gagal mendapatkan lokasi.');
+            alert(messages[err.code] || 'Gagal mendapatkan lokasi: ' + err.message);
         },
-        { timeout: 10000, enableHighAccuracy: false }
+        { timeout: 10000, maximumAge: 0, enableHighAccuracy: true }
     );
 });
 

@@ -10,8 +10,6 @@ return new class extends Migration
     {
         Schema::create('reports', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('phone', 20)->nullable();
             $table->text('description');
             $table->string('address')->nullable();
             $table->decimal('latitude', 10, 7);

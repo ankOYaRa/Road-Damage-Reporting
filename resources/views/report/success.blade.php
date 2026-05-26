@@ -32,8 +32,6 @@
                 <div class="row g-2">
                     <div class="col-5 text-muted">ID Laporan</div>
                     <div class="col-7 fw-semibold">#{{ $report->id }}</div>
-                    <div class="col-5 text-muted">Nama</div>
-                    <div class="col-7">{{ $report->name }}</div>
                     <div class="col-5 text-muted">Status CNN</div>
                     <div class="col-7">
                         <span class="badge rounded-pill {{ $report->cnn_status === 'valid' ? 'badge-valid' : 'badge-invalid' }}">

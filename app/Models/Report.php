@@ -10,8 +10,6 @@ class Report extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name',
-        'phone',
         'description',
         'address',
         'latitude',
