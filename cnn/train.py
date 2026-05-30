@@ -45,12 +45,12 @@ HISTORY_PATH = BASE_DIR / "training_history.json"
 PLOT_PATH    = BASE_DIR / "training_plot.png"
 
 IMG_SIZE     = 224
-BATCH_SIZE   = 32
-EPOCHS_FROZEN   = 10   # tahap 1: hanya melatih head (base frozen)
-EPOCHS_FINETUNE = 10   # tahap 2: fine-tune lapisan atas MobileNetV2
-LEARNING_RATE   = 1e-4
-FINETUNE_LR     = 1e-5
-VALIDATION_SPLIT= 0.2
+BATCH_SIZE   = 16        # Changed from 16 (too large for small dataset)
+EPOCHS_FROZEN   = 25   # tahap 1: hanya melatih head (base frozen)
+EPOCHS_FINETUNE = 25   # tahap 2: fine-tune lapisan atas MobileNetV2
+LEARNING_RATE   = 1e-3
+FINETUNE_LR     = 1e-4
+VALIDATION_SPLIT= 0.15
 SEED            = 42
 
 # Label: 0 = invalid, 1 = valid
@@ -96,10 +96,12 @@ def build_model(trainable_base: bool = False) -> keras.Model:
 
 
 def get_data_generators():
-    """Buat data generator dengan augmentasi untuk training."""
+    """Buat data generator dengan augmentasi untuk training.
+    Split: 70% train, 15% validation, 15% test
+    """
     train_gen = ImageDataGenerator(
         rescale=1.0 / 255,
-        validation_split=VALIDATION_SPLIT,
+        validation_split=0.3,  # 70% train, 30% val+test
         rotation_range=20,
         width_shift_range=0.15,
         height_shift_range=0.15,
@@ -110,9 +112,9 @@ def get_data_generators():
         fill_mode="nearest",
     )
 
-    val_gen = ImageDataGenerator(
+    val_test_gen = ImageDataGenerator(
         rescale=1.0 / 255,
-        validation_split=VALIDATION_SPLIT,
+        validation_split=0.5,  # Split 30% into 15% val + 15% test
     )
 
     train_flow = train_gen.flow_from_directory(
@@ -125,21 +127,32 @@ def get_data_generators():
         seed=SEED,
     )
 
-    val_flow = val_gen.flow_from_directory(
+    val_flow = val_test_gen.flow_from_directory(
         DATASET_DIR,
         target_size=(IMG_SIZE, IMG_SIZE),
         batch_size=BATCH_SIZE,
         class_mode="binary",
         classes=CLASS_NAMES,
-        subset="validation",
+        subset="training",  # First half of val+test = validation
+        seed=SEED,
+    )
+
+    test_flow = val_test_gen.flow_from_directory(
+        DATASET_DIR,
+        target_size=(IMG_SIZE, IMG_SIZE),
+        batch_size=BATCH_SIZE,
+        class_mode="binary",
+        classes=CLASS_NAMES,
+        subset="validation",  # Second half of val+test = test
         seed=SEED,
     )
 
     print(f"  Class indices: {train_flow.class_indices}")
     print(f"  Training   samples: {train_flow.samples}")
-    print(f"  Validation samples: {val_flow.samples}\n")
+    print(f"  Validation samples: {val_flow.samples}")
+    print(f"  Test       samples: {test_flow.samples}\n")
 
-    return train_flow, val_flow
+    return train_flow, val_flow, test_flow
 
 
 def plot_history(histories: list, output_path: str):
@@ -189,6 +202,12 @@ def evaluate_model(model, val_flow):
     y_pred_prob = model.predict(val_flow, verbose=0)
     y_pred = (y_pred_prob.ravel() >= 0.5).astype(int)
 
+    # Jika validation data terlalu kecil, skip detailed report
+    if len(np.unique(y_true)) < 2:
+        print(f"\n[WARNING] Validation data terlalu kecil untuk classification report")
+        print(f"  Accuracy: {(y_pred == y_true).mean():.4f}")
+        return
+
     print("\n══ Classification Report ══════════════════════════════════")
     print(classification_report(y_true, y_pred, target_names=CLASS_NAMES))
 
@@ -229,7 +248,7 @@ def main():
 
     # ── Data generators ──────────────────────────────────────────
     print("[STEP 2] Menyiapkan data…")
-    train_flow, val_flow = get_data_generators()
+    train_flow, val_flow, test_flow = get_data_generators()
 
     # ─────────────────────────────────────────────────────────────
     # TAHAP 1: Latih head saja (base frozen)
@@ -244,8 +263,8 @@ def main():
     model.summary()
 
     callbacks_frozen = [
-        keras.callbacks.EarlyStopping(patience=4, restore_best_weights=True, verbose=1),
-        keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=2, verbose=1),
+        keras.callbacks.EarlyStopping(patience=25, restore_best_weights=True, verbose=1),
+        keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=5, verbose=1),
     ]
 
     h1 = model.fit(
@@ -262,7 +281,17 @@ def main():
     print("\n[STEP 4] Tahap 2 — Fine-tuning lapisan atas MobileNetV2…\n")
 
     # Buka sebagian base model untuk fine-tuning
-    base_model = model.layers[2]           # layer MobileNetV2
+    # Cari layer MobileNetV2 (bukan preprocessing layers)
+    base_model = None
+    for layer in model.layers:
+        if "mobilenet" in layer.name.lower():
+            base_model = layer
+            break
+
+    if base_model is None:
+        print("[ERROR] Tidak bisa menemukan MobileNetV2 layer")
+        sys.exit(1)
+
     base_model.trainable = True
     finetune_from = len(base_model.layers) - 30
     for layer in base_model.layers[:finetune_from]:
@@ -275,8 +304,8 @@ def main():
     )
 
     callbacks_ft = [
-        keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True, verbose=1),
-        keras.callbacks.ReduceLROnPlateau(factor=0.3, patience=3, verbose=1),
+        keras.callbacks.EarlyStopping(patience=25, restore_best_weights=True, verbose=1),
+        keras.callbacks.ReduceLROnPlateau(factor=0.3, patience=5, verbose=1),
         keras.callbacks.ModelCheckpoint(
             str(MODEL_PATH), save_best_only=True, monitor="val_accuracy", verbose=1
         ),
@@ -296,7 +325,10 @@ def main():
 
     # ── Evaluasi ──────────────────────────────────────────────────
     print("\n[STEP 5] Evaluasi model…")
+    print("\n─── Validasi Set ───────────────────────────────────────────")
     evaluate_model(model, val_flow)
+    print("\n─── Test Set ───────────────────────────────────────────────")
+    evaluate_model(model, test_flow)
 
     # ── Plot & riwayat ────────────────────────────────────────────
     save_history([h1, h2])

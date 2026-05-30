@@ -35,7 +35,7 @@
         <div class="col-sm-3">
             <label class="form-label small fw-semibold mb-1">Cari</label>
             <input type="text" name="search" class="form-control form-control-sm"
-                   placeholder="Nama, deskripsi, alamat…" value="{{ request('search') }}">
+                   placeholder="Deskripsi, alamat…" value="{{ request('search') }}">
         </div>
         <div class="col-sm-2">
             <label class="form-label small fw-semibold mb-1">Status Admin</label>
@@ -43,6 +43,7 @@
                 <option value="">Semua</option>
                 <option value="pending"  {{ request('status') === 'pending'  ? 'selected' : '' }}>Menunggu</option>
                 <option value="approved" {{ request('status') === 'approved' ? 'selected' : '' }}>Disetujui</option>
+                <option value="selesai"  {{ request('status') === 'selesai'  ? 'selected' : '' }}>Selesai</option>
                 <option value="rejected" {{ request('status') === 'rejected' ? 'selected' : '' }}>Ditolak</option>
             </select>
         </div>
@@ -71,7 +72,6 @@
                 <tr>
                     <th class="ps-3">#</th>
                     <th>Foto</th>
-                    <th>Pelapor</th>
                     <th>Lokasi</th>
                     <th>CNN</th>
                     <th>Status</th>
@@ -86,10 +86,6 @@
                     <td>
                         <img src="{{ asset('storage/' . $r->photo_path) }}" alt="foto"
                              style="width:52px;height:42px;object-fit:cover;border-radius:6px;">
-                    </td>
-                    <td>
-                        <div class="fw-semibold small">{{ $r->name }}</div>
-                        <div class="text-muted" style="font-size:.75rem">{{ $r->phone }}</div>
                     </td>
                     <td class="small text-muted" style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
                         {{ $r->address ?: ($r->latitude . ', ' . $r->longitude) }}
@@ -114,7 +110,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">Tidak ada laporan ditemukan.</td>
+                    <td colspan="7" class="text-center text-muted py-4">Tidak ada laporan ditemukan.</td>
                 </tr>
                 @endforelse
             </tbody>

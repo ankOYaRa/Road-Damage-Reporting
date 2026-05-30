@@ -66,7 +66,7 @@ reports.forEach(r => {
     marker.bindPopup(`
         <div style="min-width:220px">
             <img src="${imgUrl}" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px" onerror="this.style.display='none'">
-            <div><strong>#${r.id} &mdash; ${r.name}</strong></div>
+            <div><strong>#${r.id}</strong></div>
             <div class="text-muted small">${r.address || (lat.toFixed(5) + ', ' + lng.toFixed(5))}</div>
             <hr style="margin:6px 0">
             <div class="small">${r.description}</div>

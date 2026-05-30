@@ -38,8 +38,6 @@
             <h6 class="fw-bold mb-3">Informasi Laporan</h6>
             <table class="table table-sm table-borderless">
                 <tr><td class="text-muted w-35">ID</td><td>#{{ $report->id }}</td></tr>
-                <tr><td class="text-muted">Nama</td><td>{{ $report->name }}</td></tr>
-                <tr><td class="text-muted">No. HP</td><td>{{ $report->phone ?: '-' }}</td></tr>
                 <tr><td class="text-muted">Alamat</td><td>{{ $report->address ?: '-' }}</td></tr>
                 <tr>
                     <td class="text-muted">Koordinat</td>
@@ -94,9 +92,33 @@
                 </div>
             </div>
         </div>
+        @elseif($report->admin_status === 'approved')
+        <div class="alert alert-success mb-3">
+            <strong>✓ Laporan Telah Disetujui</strong>
+            @if($report->admin_note) &mdash; {{ $report->admin_note }} @endif
+        </div>
+        <div class="card p-3">
+            <h6 class="fw-bold mb-3">Tandai Selesai</h6>
+            <form method="POST" action="{{ route('admin.reports.selesai', $report) }}">
+                @csrf
+                <div class="mb-2">
+                    <textarea name="admin_note" class="form-control form-control-sm" rows="2"
+                              placeholder="Catatan penyelesaian (opsional)">{{ $report->admin_note }}</textarea>
+                </div>
+                <button class="btn btn-info w-100">
+                    <i class="bi bi-check-all me-1"></i>Tandai Selesai
+                </button>
+            </form>
+        </div>
         @else
-        <div class="alert {{ $report->admin_status === 'approved' ? 'alert-success' : 'alert-danger' }}">
-            <strong>{{ $report->admin_status === 'approved' ? '✓ Laporan Disetujui' : '✗ Laporan Ditolak' }}</strong>
+        <div class="alert {{ $report->admin_status === 'selesai' ? 'alert-info' : 'alert-danger' }}">
+            <strong>
+                @if($report->admin_status === 'selesai')
+                    ✓ Perbaikan Selesai
+                @else
+                    ✗ Laporan Ditolak
+                @endif
+            </strong>
             @if($report->admin_note) &mdash; {{ $report->admin_note }} @endif
         </div>
         @endif

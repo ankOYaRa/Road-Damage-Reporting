@@ -23,8 +23,7 @@ class ReportController extends Controller
         if ($request->filled('search')) {
             $s = $request->search;
             $query->where(function ($q) use ($s) {
-                $q->where('name', 'like', "%{$s}%")
-                  ->orWhere('description', 'like', "%{$s}%")
+                $q->where('description', 'like', "%{$s}%")
                   ->orWhere('address', 'like', "%{$s}%");
             });
         }
@@ -72,10 +71,22 @@ class ReportController extends Controller
         return back()->with('success', 'Laporan ditolak.');
     }
 
+    public function selesai(Request $request, Report $report)
+    {
+        $request->validate(['admin_note' => 'nullable|string|max:500']);
+
+        $report->update([
+            'admin_status' => 'selesai',
+            'admin_note'   => $request->admin_note,
+        ]);
+
+        return back()->with('success', 'Laporan ditandai selesai.');
+    }
+
     public function map()
     {
         $reports = Report::where('admin_status', 'approved')
-            ->select('id', 'name', 'description', 'address', 'latitude', 'longitude', 'photo_path', 'cnn_confidence', 'created_at')
+            ->select('id', 'description', 'address', 'latitude', 'longitude', 'photo_path', 'cnn_confidence', 'created_at')
             ->get();
 
         return view('admin.map', compact('reports'));
