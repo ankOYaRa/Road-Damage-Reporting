@@ -45,12 +45,12 @@ HISTORY_PATH = BASE_DIR / "training_history.json"
 PLOT_PATH    = BASE_DIR / "training_plot.png"
 
 IMG_SIZE     = 224
-BATCH_SIZE   = 16        # Changed from 16 (too large for small dataset)
-EPOCHS_FROZEN   = 25   # tahap 1: hanya melatih head (base frozen)
-EPOCHS_FINETUNE = 25   # tahap 2: fine-tune lapisan atas MobileNetV2
-LEARNING_RATE   = 1e-3
-FINETUNE_LR     = 1e-4
-VALIDATION_SPLIT= 0.15
+BATCH_SIZE   = 16      # As per experiment proposal
+EPOCHS_FROZEN   = 50   # tahap 1: hanya melatih head (base frozen)
+EPOCHS_FINETUNE = 50   # tahap 2: fine-tune lapisan atas MobileNetV2
+LEARNING_RATE   = 1e-2
+FINETUNE_LR     = 5e-3
+VALIDATION_SPLIT= 0.2
 SEED            = 42
 
 # Label: 0 = invalid, 1 = valid

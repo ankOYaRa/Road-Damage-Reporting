@@ -58,6 +58,7 @@ def preprocess_image(image_path: str) -> np.ndarray:
         error_out(f"File gambar tidak ditemukan: {image_path}")
 
     try:
+        # Convert to string to handle Windows paths properly
         img = tf.keras.utils.load_img(str(path), target_size=(IMG_SIZE, IMG_SIZE))
         arr = tf.keras.utils.img_to_array(img)           # (224, 224, 3)
         arr = arr / 255.0                                 # normalize ke [0,1]
@@ -74,6 +75,10 @@ def predict(image_path: str) -> dict:
 
     prob = float(model.predict(img_array, verbose=0)[0][0])
 
+    # Debug log
+    with open('predict_debug.log', 'a') as f:
+        f.write(f"Image: {image_path} | Prob: {prob} | Status: {'valid' if prob >= THRESHOLD else 'invalid'}\n")
+
     if prob >= THRESHOLD:
         return {"status": "valid",   "confidence": round(prob, 4)}
     else:
@@ -84,7 +89,16 @@ def predict(image_path: str) -> dict:
 
 def error_out(message: str):
     """Cetak JSON error dan keluar dengan kode 1."""
-    print(json.dumps({"error": message, "status": "invalid", "confidence": 0.0}))
+    error_json = {"error": str(message), "status": "invalid", "confidence": 0.0}
+    print(json.dumps(error_json))
+
+    # Also write to debug log
+    try:
+        with open('predict_debug.log', 'a') as f:
+            f.write(f"ERROR: {message}\n")
+    except:
+        pass
+
     sys.exit(1)
 
 
