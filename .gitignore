@@ -22,3 +22,15 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# CNN Dataset - Don't push large training images
+/cnn/dataset/
+
+# CNN Model files - Don't push trained models (they're large)
+/cnn/*.keras
+/cnn/model.keras
+
+# CNN training artifacts
+/cnn/predict_debug.log
+/cnn/training_history.json
+/cnn/training_plot.png
