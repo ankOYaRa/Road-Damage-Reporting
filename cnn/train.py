@@ -29,7 +29,7 @@ import pathlib
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from tensorflow.keras import layers, regularizers
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from sklearn.metrics import classification_report, confusion_matrix
@@ -44,12 +44,12 @@ MODEL_PATH   = BASE_DIR / "model.keras"
 HISTORY_PATH = BASE_DIR / "training_history.json"
 PLOT_PATH    = BASE_DIR / "training_plot.png"
 
-IMG_SIZE     = 224
-BATCH_SIZE   = 16      # As per experiment proposal
-EPOCHS_FROZEN   = 50   # tahap 1: hanya melatih head (base frozen)
-EPOCHS_FINETUNE = 50   # tahap 2: fine-tune lapisan atas MobileNetV2
-LEARNING_RATE   = 1e-2
-FINETUNE_LR     = 5e-3
+IMG_SIZE        = 224
+BATCH_SIZE      = 16     # Larger batch = better gradient estimates, less noise
+EPOCHS_FROZEN   = 30    # tahap 1: hanya melatih head (base frozen)
+EPOCHS_FINETUNE = 50    # tahap 2: fine-tune lapisan atas MobileNetV2
+LEARNING_RATE   = 3e-4  # Good default for Adam with frozen base
+FINETUNE_LR     = 1e-5  # Very low to avoid destroying pretrained weights
 VALIDATION_SPLIT= 0.2
 SEED            = 42
 
@@ -75,7 +75,13 @@ def check_dataset():
 def build_model(trainable_base: bool = False) -> keras.Model:
     """
     Bangun model CNN dengan MobileNetV2 sebagai base model.
-    Head: GlobalAveragePooling → Dense(256) → Dropout → Dense(1, sigmoid)
+
+    Head yang disederhanakan untuk mencegah overfitting pada dataset kecil:
+        GlobalAveragePooling -> BatchNorm -> Dropout(0.5) -> Dense(1, sigmoid)
+
+    Dense(256) yang sebelumnya ada DIHAPUS karena dengan hanya 350 gambar
+    training, layer tersebut justru menghafal data (overfitting) bukan belajar.
+    L2 regularization ditambahkan pada layer output.
     """
     base = MobileNetV2(
         input_shape=(IMG_SIZE, IMG_SIZE, 3),
@@ -85,12 +91,17 @@ def build_model(trainable_base: bool = False) -> keras.Model:
     base.trainable = trainable_base
 
     inputs = keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
+    # preprocess_input expects [0,255] — do NOT use rescale=1/255 in generator
     x = tf.keras.applications.mobilenet_v2.preprocess_input(inputs)
-    x = base(x, training=trainable_base)
+    x = base(x, training=False)  # BN layers always in inference mode
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(256, activation="relu")(x)
-    x = layers.Dropout(0.4)(x)
-    outputs = layers.Dense(1, activation="sigmoid")(x)
+    x = layers.BatchNormalization()(x)          # stabilize feature distribution
+    x = layers.Dropout(0.5)(x)                  # stronger dropout vs 0.4 before
+    outputs = layers.Dense(
+        1,
+        activation="sigmoid",
+        kernel_regularizer=regularizers.l2(1e-4),  # L2 to penalize large weights
+    )(x)
 
     return keras.Model(inputs, outputs)
 
@@ -98,54 +109,93 @@ def build_model(trainable_base: bool = False) -> keras.Model:
 def get_data_generators():
     """Buat data generator dengan augmentasi untuk training.
     Split: 70% train, 15% validation, 15% test
+
+    FIX: Removed rescale=1/255 — MobileNetV2's preprocess_input inside the model
+    already handles normalization and expects raw [0,255] pixel values.
+    Using rescale here caused double-preprocessing and killed learning.
+
+    FIX: Fixed the val/test split — previously val_test_gen read from the same
+    full dataset directory without a proper held-out split, causing overlap.
+    Now using dataset_split/ directory which has proper train/val/test folders.
     """
-    train_gen = ImageDataGenerator(
-        rescale=1.0 / 255,
-        validation_split=0.3,  # 70% train, 30% val+test
-        rotation_range=20,
-        width_shift_range=0.15,
-        height_shift_range=0.15,
-        shear_range=0.1,
-        zoom_range=0.2,
-        horizontal_flip=True,
-        brightness_range=[0.8, 1.2],
-        fill_mode="nearest",
-    )
+    # Use dataset_split if available (proper pre-split dataset)
+    split_dir = BASE_DIR / "dataset_split"
+    if (split_dir / "train").exists():
+        print("[INFO] Menggunakan dataset_split/ yang sudah di-split…")
+        # FIX: No rescale — preprocess_input inside model handles normalization
+        # Aggressive augmentation to artificially multiply 175 training images
+        train_gen = ImageDataGenerator(
+            rotation_range=30,           # more rotation variety
+            width_shift_range=0.2,
+            height_shift_range=0.2,
+            shear_range=0.15,
+            zoom_range=0.25,             # stronger zoom
+            horizontal_flip=True,
+            vertical_flip=True,          # road damage appears at any angle
+            brightness_range=[0.7, 1.3], # wider brightness range
+            channel_shift_range=30.0,    # color jitter for lighting variation
+            fill_mode="reflect",         # reflect is better than nearest for roads
+        )
+        val_test_gen = ImageDataGenerator()  # No augmentation for val/test
 
-    val_test_gen = ImageDataGenerator(
-        rescale=1.0 / 255,
-        validation_split=0.5,  # Split 30% into 15% val + 15% test
-    )
+        train_flow = train_gen.flow_from_directory(
+            split_dir / "train",
+            target_size=(IMG_SIZE, IMG_SIZE),
+            batch_size=BATCH_SIZE,
+            class_mode="binary",
+            classes=CLASS_NAMES,
+            seed=SEED,
+        )
+        val_flow = val_test_gen.flow_from_directory(
+            split_dir / "val",
+            target_size=(IMG_SIZE, IMG_SIZE),
+            batch_size=BATCH_SIZE,
+            class_mode="binary",
+            classes=CLASS_NAMES,
+            seed=SEED,
+        )
+        test_flow = val_test_gen.flow_from_directory(
+            split_dir / "test",
+            target_size=(IMG_SIZE, IMG_SIZE),
+            batch_size=BATCH_SIZE,
+            class_mode="binary",
+            classes=CLASS_NAMES,
+            seed=SEED,
+        )
+    else:
+        print("[INFO] dataset_split/ tidak ada, pakai dataset/ dengan validation_split…")
+        train_gen = ImageDataGenerator(
+            validation_split=0.2,
+            rotation_range=20,
+            width_shift_range=0.15,
+            height_shift_range=0.15,
+            shear_range=0.1,
+            zoom_range=0.2,
+            horizontal_flip=True,
+            brightness_range=[0.8, 1.2],
+            fill_mode="nearest",
+        )
+        val_gen = ImageDataGenerator(validation_split=0.2)  # No augmentation
 
-    train_flow = train_gen.flow_from_directory(
-        DATASET_DIR,
-        target_size=(IMG_SIZE, IMG_SIZE),
-        batch_size=BATCH_SIZE,
-        class_mode="binary",
-        classes=CLASS_NAMES,
-        subset="training",
-        seed=SEED,
-    )
-
-    val_flow = val_test_gen.flow_from_directory(
-        DATASET_DIR,
-        target_size=(IMG_SIZE, IMG_SIZE),
-        batch_size=BATCH_SIZE,
-        class_mode="binary",
-        classes=CLASS_NAMES,
-        subset="training",  # First half of val+test = validation
-        seed=SEED,
-    )
-
-    test_flow = val_test_gen.flow_from_directory(
-        DATASET_DIR,
-        target_size=(IMG_SIZE, IMG_SIZE),
-        batch_size=BATCH_SIZE,
-        class_mode="binary",
-        classes=CLASS_NAMES,
-        subset="validation",  # Second half of val+test = test
-        seed=SEED,
-    )
+        train_flow = train_gen.flow_from_directory(
+            DATASET_DIR,
+            target_size=(IMG_SIZE, IMG_SIZE),
+            batch_size=BATCH_SIZE,
+            class_mode="binary",
+            classes=CLASS_NAMES,
+            subset="training",
+            seed=SEED,
+        )
+        val_flow = val_gen.flow_from_directory(
+            DATASET_DIR,
+            target_size=(IMG_SIZE, IMG_SIZE),
+            batch_size=BATCH_SIZE,
+            class_mode="binary",
+            classes=CLASS_NAMES,
+            subset="validation",
+            seed=SEED,
+        )
+        test_flow = val_flow  # Use same val as test when no split dir
 
     print(f"  Class indices: {train_flow.class_indices}")
     print(f"  Training   samples: {train_flow.samples}")
@@ -250,6 +300,16 @@ def main():
     print("[STEP 2] Menyiapkan data…")
     train_flow, val_flow, test_flow = get_data_generators()
 
+    # Hitung class weights untuk menangani dataset kecil/tidak seimbang
+    total = train_flow.samples
+    n_invalid = sum(1 for label in train_flow.classes if label == 0)
+    n_valid   = total - n_invalid
+    class_weight = {
+        0: total / (2 * n_invalid) if n_invalid > 0 else 1.0,
+        1: total / (2 * n_valid)   if n_valid   > 0 else 1.0,
+    }
+    print(f"[INFO] Class weights: invalid={class_weight[0]:.3f}, valid={class_weight[1]:.3f}")
+
     # ─────────────────────────────────────────────────────────────
     # TAHAP 1: Latih head saja (base frozen)
     # ─────────────────────────────────────────────────────────────
@@ -263,8 +323,14 @@ def main():
     model.summary()
 
     callbacks_frozen = [
-        keras.callbacks.EarlyStopping(patience=25, restore_best_weights=True, verbose=1),
-        keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=5, verbose=1),
+        # Monitor val_loss — more honest than val_accuracy for detecting overfitting
+        keras.callbacks.EarlyStopping(
+            monitor="val_loss", patience=8,
+            restore_best_weights=True, verbose=1
+        ),
+        keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss", factor=0.5, patience=4, min_lr=1e-7, verbose=1
+        ),
     ]
 
     h1 = model.fit(
@@ -272,6 +338,7 @@ def main():
         validation_data=val_flow,
         epochs=EPOCHS_FROZEN,
         callbacks=callbacks_frozen,
+        class_weight=class_weight,
         verbose=1,
     )
 
@@ -293,10 +360,16 @@ def main():
         sys.exit(1)
 
     base_model.trainable = True
+    # FIX: Freeze all BatchNormalization layers — critical for fine-tuning with small data
+    for layer in base_model.layers:
+        if isinstance(layer, tf.keras.layers.BatchNormalization):
+            layer.trainable = False
+    # Only unfreeze the last 30 non-BN layers
     finetune_from = len(base_model.layers) - 30
     for layer in base_model.layers[:finetune_from]:
         layer.trainable = False
 
+    # FIX: Use much lower LR for fine-tuning to avoid destroying pretrained weights
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=FINETUNE_LR),
         loss="binary_crossentropy",
@@ -304,10 +377,17 @@ def main():
     )
 
     callbacks_ft = [
-        keras.callbacks.EarlyStopping(patience=25, restore_best_weights=True, verbose=1),
-        keras.callbacks.ReduceLROnPlateau(factor=0.3, patience=5, verbose=1),
+        keras.callbacks.EarlyStopping(
+            monitor="val_loss", patience=12,
+            restore_best_weights=True, verbose=1
+        ),
+        keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss", factor=0.3, patience=5, min_lr=1e-8, verbose=1
+        ),
+        # Save best model based on val_loss — more reliable than val_accuracy
         keras.callbacks.ModelCheckpoint(
-            str(MODEL_PATH), save_best_only=True, monitor="val_accuracy", verbose=1
+            str(MODEL_PATH), save_best_only=True, monitor="val_loss",
+            mode="min", verbose=1
         ),
     ]
 
@@ -316,6 +396,7 @@ def main():
         validation_data=val_flow,
         epochs=EPOCHS_FINETUNE,
         callbacks=callbacks_ft,
+        class_weight=class_weight,
         verbose=1,
     )
 

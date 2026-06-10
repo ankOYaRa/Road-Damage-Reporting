@@ -25,6 +25,7 @@ Thumbs.db
 
 # CNN Dataset - Don't push large training images
 /cnn/dataset/
+/cnn/dataset_split/
 
 # CNN Model files - Don't push trained models (they're large)
 /cnn/*.keras
