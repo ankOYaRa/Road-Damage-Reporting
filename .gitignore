@@ -35,3 +35,8 @@ Thumbs.db
 /cnn/predict_debug.log
 /cnn/training_history.json
 /cnn/training_plot.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

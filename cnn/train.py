@@ -46,7 +46,7 @@ PLOT_PATH    = BASE_DIR / "training_plot.png"
 
 IMG_SIZE        = 224
 BATCH_SIZE      = 16     # Larger batch = better gradient estimates, less noise
-EPOCHS_FROZEN   = 30    # tahap 1: hanya melatih head (base frozen)
+EPOCHS_FROZEN   = 50    # tahap 1: hanya melatih head (base frozen)
 EPOCHS_FINETUNE = 50    # tahap 2: fine-tune lapisan atas MobileNetV2
 LEARNING_RATE   = 3e-4  # Good default for Adam with frozen base
 FINETUNE_LR     = 1e-5  # Very low to avoid destroying pretrained weights
@@ -152,6 +152,7 @@ def get_data_generators():
             batch_size=BATCH_SIZE,
             class_mode="binary",
             classes=CLASS_NAMES,
+            shuffle=False,  # CRITICAL: must be False so y_true order matches predict() order
             seed=SEED,
         )
         test_flow = val_test_gen.flow_from_directory(
@@ -160,6 +161,7 @@ def get_data_generators():
             batch_size=BATCH_SIZE,
             class_mode="binary",
             classes=CLASS_NAMES,
+            shuffle=False,  # CRITICAL: must be False so y_true order matches predict() order
             seed=SEED,
         )
     else:
@@ -193,6 +195,7 @@ def get_data_generators():
             class_mode="binary",
             classes=CLASS_NAMES,
             subset="validation",
+            shuffle=False,  # CRITICAL: must be False so y_true order matches predict() order
             seed=SEED,
         )
         test_flow = val_flow  # Use same val as test when no split dir
@@ -246,11 +249,21 @@ def plot_history(histories: list, output_path: str):
 
 
 def evaluate_model(model, val_flow):
-    """Cetak classification report dan confusion matrix."""
+    """Cetak classification report dan confusion matrix.
+
+    PENTING: val_flow harus dibuat dengan shuffle=False agar urutan y_true
+    (dari val_flow.classes) cocok dengan urutan output model.predict().
+    Jika shuffle=True, prediksi dan label tidak sinkron -> accuracy selalu ~50%.
+    """
     val_flow.reset()
-    y_true = val_flow.classes
-    y_pred_prob = model.predict(val_flow, verbose=0)
+    y_true = val_flow.classes                      # label dalam urutan disk (tetap)
+    y_pred_prob = model.predict(val_flow, verbose=0)  # prediksi harus urutan sama
     y_pred = (y_pred_prob.ravel() >= 0.5).astype(int)
+
+    # Sanity check: jumlah prediksi harus sama dengan jumlah label
+    if len(y_pred) != len(y_true):
+        print(f"[WARNING] Jumlah prediksi ({len(y_pred)}) != jumlah label ({len(y_true)}). Hasil evaluasi tidak valid.")
+        y_pred = y_pred[:len(y_true)]  # truncate jika ada padding batch
 
     # Jika validation data terlalu kecil, skip detailed report
     if len(np.unique(y_true)) < 2:
@@ -323,11 +336,7 @@ def main():
     model.summary()
 
     callbacks_frozen = [
-        # Monitor val_loss — more honest than val_accuracy for detecting overfitting
-        keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=8,
-            restore_best_weights=True, verbose=1
-        ),
+        # Hanya ReduceLROnPlateau — training berjalan tepat EPOCHS_FROZEN epoch
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.5, patience=4, min_lr=1e-7, verbose=1
         ),
@@ -377,14 +386,11 @@ def main():
     )
 
     callbacks_ft = [
-        keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=12,
-            restore_best_weights=True, verbose=1
-        ),
+        # Hanya ReduceLROnPlateau — training berjalan tepat EPOCHS_FINETUNE epoch
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.3, patience=5, min_lr=1e-8, verbose=1
         ),
-        # Save best model based on val_loss — more reliable than val_accuracy
+        # Simpan model terbaik berdasarkan val_loss
         keras.callbacks.ModelCheckpoint(
             str(MODEL_PATH), save_best_only=True, monitor="val_loss",
             mode="min", verbose=1
