@@ -1,59 +1,181 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Sistem Laporan Kerusakan Jalan
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi web berbasis **Laravel** untuk pelaporan kerusakan jalan yang dilengkapi dengan sistem klasifikasi gambar otomatis menggunakan **CNN (Convolutional Neural Network)** berbasis MobileNetV2.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Fitur Utama
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- Pelaporan kerusakan jalan oleh masyarakat dengan upload foto
+- Validasi foto otomatis menggunakan model CNN (MobileNetV2 Transfer Learning)
+- Klasifikasi binary: **valid** (foto kerusakan jalan) / **invalid** (bukan foto kerusakan)
+- Dashboard admin untuk manajemen laporan
+- Status laporan: pending, diproses, selesai
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## Tech Stack
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+| Layer | Teknologi |
+|-------|-----------|
+| Backend | Laravel (PHP) |
+| Frontend | Blade + Vite |
+| Database | SQLite (default) / MySQL |
+| CNN Model | Python + TensorFlow/Keras |
+| Arsitektur CNN | MobileNetV2 (Transfer Learning + Fine-tuning) |
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## Struktur Proyek
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```
+road-damage-report/
+├── app/                    # Laravel application logic
+├── cnn/
+│   ├── dataset/
+│   │   ├── valid/          # Foto kerusakan jalan (untuk training)
+│   │   └── invalid/        # Foto bukan kerusakan (untuk training)
+│   ├── dataset_split/      # Hasil split otomatis (dibuat oleh split_dataset.py)
+│   │   ├── train/
+│   │   ├── val/
+│   │   └── test/
+│   ├── train.py            # Script training CNN
+│   ├── split_dataset.py    # Script pembagian dataset (70/15/15)
+│   ├── predict.py          # Script inferensi (dipanggil oleh Laravel)
+│   ├── requirements.txt    # Dependensi Python
+│   └── model.keras         # Model terlatih (tidak di-push ke git)
+├── public/
+├── resources/
+├── routes/
+└── ...
+```
 
-### Premium Partners
+---
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Instalasi & Setup
 
-## Contributing
+### 1. Clone Repository
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+git clone https://github.com/ankOYaRa/Road-Damage-Reporting.git
+cd Road-Damage-Reporting
+```
 
-## Code of Conduct
+### 2. Setup Laravel
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan storage:link
+```
 
-## Security Vulnerabilities
+### 3. Setup Frontend
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+npm install
+npm run dev
+```
 
-## License
+### 4. Setup Python (CNN)
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+pip install -r cnn/requirements.txt
+```
+
+---
+
+## Alur Training Model CNN
+
+### Langkah 1 — Siapkan Dataset
+
+Letakkan foto di dalam folder yang sesuai:
+
+```
+cnn/dataset/
+├── valid/      ← foto yang jelas menunjukkan kerusakan jalan
+└── invalid/    ← foto bukan kerusakan (jalan normal, spam, dll.)
+```
+
+> Dataset yang digunakan: **500 gambar** (250 valid, 250 invalid)
+
+### Langkah 2 — Split Dataset
+
+```bash
+python cnn/split_dataset.py
+```
+
+Otomatis membagi dataset dengan rasio **70% train / 15% val / 15% test** ke folder `cnn/dataset_split/`.
+
+### Langkah 3 — Training
+
+```bash
+python cnn/train.py
+```
+
+| Parameter | Nilai |
+|-----------|-------|
+| Arsitektur | MobileNetV2 (ImageNet pretrained) |
+| Input size | 224 × 224 × 3 (RGB) |
+| Batch size | 16 |
+| Fase 1 (frozen) | 50 epoch, LR = 3e-4 |
+| Fase 2 (fine-tuning) | 50 epoch, LR = 1e-5 |
+| Optimizer | Adam |
+| Loss | Binary Crossentropy |
+
+**Model head:**
+```
+MobileNetV2 (base) → GlobalAveragePooling2D → BatchNormalization → Dropout(0.5) → Dense(1, sigmoid)
+```
+
+**Output training:**
+- `cnn/model.keras` — model terlatih
+- `cnn/training_plot.png` — grafik accuracy & loss
+- `cnn/training_history.json` — riwayat metrik per epoch
+
+### Hasil Evaluasi
+
+| Metrik | Nilai |
+|--------|-------|
+| Accuracy | 95% |
+| Precision | 100% (valid) |
+| Recall | 89% (valid) |
+| F1-Score | 94% |
+
+---
+
+## Cara Kerja Prediksi
+
+Saat pengguna mengupload foto laporan, Laravel memanggil `predict.py` via subprocess:
+
+```bash
+python cnn/predict.py <path/to/image.jpg>
+```
+
+Output JSON ke stdout:
+
+```json
+{"status": "valid",   "confidence": 0.9231}
+{"status": "invalid", "confidence": 0.1234}
+```
+
+- `valid` → foto dikenali sebagai kerusakan jalan, laporan diterima
+- `invalid` → foto bukan kerusakan jalan, laporan ditolak
+- `confidence` → nilai probabilitas prediksi model (0.0 – 1.0)
+
+---
+
+## Menjalankan Aplikasi
+
+```bash
+php artisan serve
+```
+
+Akses di browser: `http://localhost:8000`
+
+---
+
+## Lisensi
+
+Proyek ini dibuat untuk keperluan penelitian skripsi.
